@@ -29,8 +29,9 @@ class Screener:
         cls._producer = Producer()
         settings = await cls._fetch_settings()
         cls._consumer = Consumer(cls._producer, settings)
-        await cls._consumer.start()
-        await cls._producer.start()
+        cls._tasks.append(asyncio.create_task(cls._consumer.start()))
+        cls._tasks.append(asyncio.create_task(cls._producer.start()))
+        await asyncio.gather(*cls._tasks)
 
     @classmethod
     async def stop(cls) -> None:

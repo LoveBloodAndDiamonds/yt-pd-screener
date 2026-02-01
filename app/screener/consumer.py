@@ -71,14 +71,16 @@ class Consumer:
                 self._timeout_tracker.block(symbol, self._settings.timeout)
                 tasks.append(task)
 
-        await asyncio.gather(*tasks)
-        logger.success(f"Sended {len(tasks)} signals!")
+        if tasks:
+            await asyncio.gather(*tasks)
+            logger.info(f"Sended {len(tasks)} signals!")
 
     async def _process_symbol(self, symbol: str, klines: list[KlineDict]) -> asyncio.Task | None:
         """Обрабатывает данные по тикеру."""
         price_change, start_price, last_price = self._calculate_price_change(klines)
 
         if price_change > self._settings.min_growth:
+            logger.success(f"{symbol}: {price_change}%")
             return asyncio.create_task(
                 self._telegram_bot.send_message(
                     bot_token=self._settings.bot_token,  # type: ignore
@@ -101,16 +103,27 @@ class Consumer:
             tuple[float, float, float]: (price_change, start_price, last_price)
         """
         if not klines:
-            return 0, 0, 0
+            return 0.0, 0.0, 0.0
 
         threshold = (time.time() - self._settings.interval) * 1000
-        valid_klines = [k for k in klines if k["t"] > threshold]
 
-        if not valid_klines:
-            return 0, 0, 0
+        start_price = None
+        last_price = None
 
-        last_price = valid_klines[-1]["h"]
-        start_price = min(k["l"] for k in valid_klines)
-        price_change = percent_greater(lower=start_price, higher=last_price)
+        for k in klines:
+            if k["t"] <= threshold:
+                continue
 
-        return price_change, start_price, last_price
+            low = k["l"]
+            high = k["h"]
+
+            if start_price is None or low < start_price:
+                start_price = low
+
+            last_price = high
+
+        if start_price is None:
+            return 0.0, 0.0, 0.0
+
+        price_change = percent_greater(lower=start_price, higher=last_price)  # type: ignore
+        return price_change, start_price, last_price  # type: ignore
