@@ -55,7 +55,7 @@ class Consumer:
         """Останавливает обработку данных."""
         logger.info("Stopping consumer...")
         self._running = False
-        await self._telegram.close()
+        await self._telegram_bot.close()
 
     async def _process(self) -> None:
         """Обрабатывает данные."""
