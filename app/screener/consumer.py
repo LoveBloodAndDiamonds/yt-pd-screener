@@ -5,6 +5,7 @@ import time
 
 from unicex import Exchange, KlineDict, MarketType
 from unicex.extra import TimeoutTracker, percent_greater
+from unicex.types import TickerDailyItem
 
 from app.config import config, logger
 from app.models import SettingsDTO
@@ -59,14 +60,20 @@ class Consumer:
 
     async def _process(self) -> None:
         """Обрабатывает данные."""
-        data = await self._producer.fetch_collected_data()
+        all_klines = await self._producer.fetch_collected_data()
+        all_ticker_daily = await self._producer.fetch_ticker_daily()
 
         tasks = []
-        for symbol, klines in data.items():
+        for symbol, klines in all_klines.items():
             if self._timeout_tracker.is_blocked(symbol):
                 continue
 
-            task = await self._process_symbol(symbol, klines)
+            ticker_daily = all_ticker_daily.get(symbol)
+            if not ticker_daily:
+                logger.warning(f"Ticker daily data not found for symbol {symbol}")
+                continue
+
+            task = await self._process_symbol(symbol, klines, ticker_daily)
             if task:
                 self._timeout_tracker.block(symbol, self._settings.timeout)
                 tasks.append(task)
@@ -75,12 +82,17 @@ class Consumer:
             await asyncio.gather(*tasks)
             logger.info(f"Sended {len(tasks)} signals!")
 
-    async def _process_symbol(self, symbol: str, klines: list[KlineDict]) -> asyncio.Task | None:
+    async def _process_symbol(
+        self,
+        symbol: str,
+        klines: list[KlineDict],
+        ticker_daily: TickerDailyItem,
+    ) -> asyncio.Task | None:
         """Обрабатывает данные по тикеру."""
         price_change, start_price, last_price = self._calculate_price_change(klines)
 
         if price_change > self._settings.min_growth:
-            logger.success(f"{symbol}: {price_change}%")
+            logger.success(f"{symbol}: {price_change}%, {ticker_daily}")
             return asyncio.create_task(
                 self._telegram_bot.send_message(
                     bot_token=self._settings.bot_token,  # type: ignore
@@ -92,6 +104,8 @@ class Consumer:
                         last_price,
                         self._exchange,
                         self._market_type,
+                        ticker_daily["p"],
+                        ticker_daily["q"],
                     ),
                 )
             )

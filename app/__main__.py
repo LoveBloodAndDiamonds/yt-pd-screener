@@ -4,6 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from unicex import start_exchanges_info
 
 from .admin import register_admin_routes
 from .config import config, logger
@@ -36,6 +37,9 @@ async def lifespan(app: FastAPI):
 
     # Register admin routes
     register_admin_routes(app)
+
+    # Start exchanges info
+    await start_exchanges_info()
 
     # Start screener
     screener = Screener()

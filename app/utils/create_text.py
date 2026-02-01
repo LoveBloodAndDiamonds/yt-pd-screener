@@ -2,7 +2,7 @@ __all__ = ["create_text"]
 
 
 from unicex import Exchange, MarketType
-from unicex.extra import generate_ex_link
+from unicex.extra import generate_ex_link, make_humanreadable
 
 
 def create_text(
@@ -12,6 +12,8 @@ def create_text(
     last_price: float,
     exchange: Exchange,
     market_type: MarketType,
+    daily_price: float,
+    daily_volume: float,
 ) -> str:
     """Формирует красивый текст сигнала о резком изменении цены. Готовый текст для отправки пользователю."""
     # Ссылка на биржу для быстрого перехода к инструменту
@@ -27,7 +29,9 @@ def create_text(
     body = (
         f"Изменение: {change_sign}{price_change:.2f}%\n"
         f"Начальная цена: {start_price} $\n"
-        f"Текущая цена: {last_price} $"
+        f"Текущая цена: {last_price} $\n"
+        f"Цена за день: {daily_price} %\n"
+        f"Объем за день: {make_humanreadable(daily_volume, locale='ru')} $."
     )
 
     # Призыв к действию и ссылка

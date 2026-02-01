@@ -11,6 +11,7 @@ from unicex import (
     IUniClient,
     KlineDict,
     MarketType,
+    TickerDailyDict,
     TradeDict,
     Websocket,
     get_uni_client,
@@ -40,6 +41,9 @@ class Producer:
     TICKERS_CHECK_INTERVAL = 600
     """Интервал проверки новых тикеров в секундах"""
 
+    TICKER_DAILY_UPDATE_INTERVAL = 5
+    """Интервал обновления суточной статистики тикеров в секундах"""
+
     def __init__(
         self,
         exchange: Exchange = config.exchange,
@@ -57,9 +61,12 @@ class Producer:
 
         self._websockets: list[Websocket] = []
         self._klines_lock = asyncio.Lock()
+        self._ticker_daily_lock = asyncio.Lock()
         self._klines: dict[str, list[KlineDict]] = defaultdict(list)
         self._tickers: set[str] = set()
+        self._ticker_daily: TickerDailyDict = {}
         self._tickers_monitor_task: asyncio.Task | None = None
+        self._ticker_daily_task: asyncio.Task | None = None
 
     async def start(self) -> None:
         """Запускает парсер данных."""
@@ -72,6 +79,7 @@ class Producer:
             self._websockets = self._create_websockets(tickers_batched)
             tasks = await self._start_websockets()
             self._tickers_monitor_task = asyncio.create_task(self._monitor_new_tickers())
+            self._ticker_daily_task = asyncio.create_task(self._update_ticker_daily())
             await asyncio.gather(*tasks, self._tickers_monitor_task)
         except TimeoutError:
             logger.error(f"{self.repr} timeout error occurred")
@@ -95,10 +103,30 @@ class Producer:
                 pass
         self._is_running = False
 
+    async def _update_ticker_daily(self) -> None:
+        """В цикле обновляет суточную статистику тикеров."""
+        while self._is_running:
+            try:
+                async with self._client_context() as client:
+                    match self._market_type:
+                        case MarketType.SPOT:
+                            self._ticker_daily = await client.ticker_24hr()
+                        case MarketType.FUTURES:
+                            self._ticker_daily = await client.futures_ticker_24hr()
+                        case _:
+                            raise ValueError(f"Unsupported market type: {self._market_type}")
+            except Exception as e:
+                logger.error(f"{self.repr} error while updating ticker daily: {e}")
+
     async def fetch_collected_data(self) -> dict[str, list[KlineDict]]:
         """Возвращает накопленные данные. Возвращает ссылку на объект в котором хранятся данные."""
         async with self._klines_lock:
             return self._klines
+
+    async def fetch_ticker_daily(self) -> TickerDailyDict:
+        """Возвращает накопленные данные. Возвращает ссылку на объект в котором хранятся данные."""
+        async with self._ticker_daily_lock:
+            return self._ticker_daily
 
     async def _fetch_tickers_list_batched(self, client: IUniClient) -> list[list[str]]:
         """Возвращает список тикеров в батчах."""
