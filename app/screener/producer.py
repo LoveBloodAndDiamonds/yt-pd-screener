@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from loguru import logger
 from unicex import (
     Exchange,
     IUniClient,
@@ -18,7 +17,7 @@ from unicex import (
     get_uni_websocket_manager,
 )
 
-from app.config import config
+from app.config import config, logger
 
 
 class Producer:
